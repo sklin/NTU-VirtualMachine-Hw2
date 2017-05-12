@@ -8,6 +8,13 @@
 
 /* Comment the next line to disable optimizations. */
 #define ENABLE_OPTIMIZATION
+#define ENABLE_OPTIMIZATION_DEBUG
+
+#ifdef ENABLE_OPTIMIZATION_DEBUG
+/*
+    fprintf(stderr, "[SHADOW STACK] \n");
+*/
+#endif
 
 /*
  * Link list facilities
@@ -16,10 +23,12 @@ struct list_head {
     struct list_head *next, *prev;
 };
 typedef struct list_head list_t;
+/*
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 #define container_of(ptr, type, member) ({                      \
         const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
         (type *)( (char *)__mptr - offsetof(type,member) );})
+*/
 
 void list_init(list_t *l);
 int list_empty(list_t *l);
@@ -65,7 +74,7 @@ void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip);
 void pop_shack(TCGv_ptr cpu_env, TCGv next_eip);
 
 struct shadow_pair* SHACK_HASHTBL_LOOKUP(CPUState *env, target_ulong guest_eip);
-void SHACK_HASHTBL_INSERT(CPUState *env, target_ulong guest_eip, unsigned long *host_eip);
+struct shadow_pair* SHACK_HASHTBL_INSERT(CPUState *env, target_ulong guest_eip, unsigned long *host_eip);
 void SHACK_HASHTBL_REMOVE(struct shadow_pair *sp);
 
 /*
