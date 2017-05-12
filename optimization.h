@@ -55,7 +55,7 @@ struct shadow_pair
 {
     struct list_head l;
     target_ulong guest_eip;
-    unsigned long *shadow_slot;
+    unsigned long *host_eip;
 };
 
 void shack_set_shadow(CPUState *env, target_ulong guest_eip, unsigned long *host_eip);
@@ -65,7 +65,7 @@ void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip);
 void pop_shack(TCGv_ptr cpu_env, TCGv next_eip);
 
 struct shadow_pair* SHACK_HASHTBL_LOOKUP(CPUState *env, target_ulong guest_eip);
-void SHACK_HASHTBL_INSERT(CPUState *env, target_ulong guest_eip, unsigned long *shadow_slot);
+void SHACK_HASHTBL_INSERT(CPUState *env, target_ulong guest_eip, unsigned long *host_eip);
 void SHACK_HASHTBL_REMOVE(struct shadow_pair *sp);
 
 /*

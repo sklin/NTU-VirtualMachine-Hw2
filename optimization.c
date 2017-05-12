@@ -49,12 +49,18 @@ list_t *shadow_hash_list;
 
 static inline void shack_init(CPUState *env)
 {
-    // allocate shadow stack
-    env->shack = (uint64_t*) malloc(SHACK_SIZE * sizeof(uint64_t)); // store guest return address
+    /* allocate shadow stack */
+    // store guest return address
+    env->shack = (uint64_t*) malloc(SHACK_SIZE * sizeof(uint64_t));
     env->shack_top = env->shack;
     env->shack_end = env->shack + SHACK_SIZE;
-    env->shadow_ret_addr = (unsigned long*) malloc(SHACK_SIZE * sizeof(unsigned long)); // store host return address
-    env->shadow_hash_list = (list_t*) malloc(SHACK_HASHTBL_SIZE * sizeof(list_t));
+
+    // store a hash table
+    env->shadow_hash_table = (list_t*) malloc(SHACK_HASHTBL_SIZE * sizeof(list_t));
+
+    int i;
+    for(i=0 ; i<SHACK_HASHTBL_SIZE ; ++i)
+        list_init(&((list_t*)env->shadow_hash_table)[i]);
 }
 
 /*
@@ -63,12 +69,9 @@ static inline void shack_init(CPUState *env)
  */
  void shack_set_shadow(CPUState *env, target_ulong guest_eip, unsigned long *host_eip)
 {
-    // TODO:
     struct shadow_pair *sp = SHACK_HASHTBL_LOOKUP(env, guest_eip);
     if(sp) {
-        *sp->shadow_slot = (uintptr_t) host_eip;
-
-        SHACK_HASHTBL_REMOVE(sp);
+        sp->host_eip = host_eip; // TODO:
     }
 }
 
@@ -78,6 +81,7 @@ static inline void shack_init(CPUState *env)
  */
 void helper_shack_flush(CPUState *env)
 {
+    env->shack_top = env->shack;
 }
 
 /*
@@ -86,12 +90,18 @@ void helper_shack_flush(CPUState *env)
  */
 void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
 {
-    TCGv_ptr temp_shack_top;
+    /*
+    if(shack_top == shack_end) { // stack not full
+        helper_shack_flush(env);
+    }
 
-    tcg_gen_ld_ptr(temp_shack_top,
-        cpu_env, offsetof(CPUState, shack_top));
-    tcg_gen_st_tl(tcg_const_tl(next_eip),
-        temp_shack_top, 0);
+    struct shadow_pair *sp = SHACK_HASHTBL_LOOKUP(env, next_eip);
+    if(!sp) {
+        SHACK_HASHTBL_INSERT(env, next_eip, NULL);
+    }
+    shack_top = sp;
+    shack_top += sizeof(void*);
+    */
 }
 
 /*
@@ -100,6 +110,16 @@ void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
  */
 void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
 {
+    /*
+    if(shack_top != shack) {
+        shack_top -= sizeof(void*);
+        struct shadow_pair *sp = (struct shadow_pair*) shack_top;
+        if(sp->guest_eip == next_eip && sp->host_eip != NUlL) {
+            *gen_opc_ptr++ = INDEX_op_jmp;
+            *gen_opparam_ptr++ = sp->host_eip;
+        }
+    }
+    */
 }
 
 /*
@@ -108,7 +128,8 @@ void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
  */
 struct shadow_pair* SHACK_HASHTBL_LOOKUP(CPUState *env, target_ulong guest_eip)
 {
-    list_t *head = &((list_t*)env->shadow_hash_list)[guest_eip % SHACK_HASHTBL_SIZE];
+    unsigned int index = guest_eip % SHACK_HASHTBL_SIZE;
+    list_t *head = &((list_t*)env->shadow_hash_table)[index];
     if(list_empty(head)) return NULL;
 
     list_t *l = head->next;
@@ -124,13 +145,15 @@ struct shadow_pair* SHACK_HASHTBL_LOOKUP(CPUState *env, target_ulong guest_eip)
  * SHACK_HASHTBL_INSERT()
  *  Add the entry into the hash table;
  */
-void SHACK_HASHTBL_INSERT(CPUState *env, target_ulong guest_eip, unsigned long *shadow_slot)
+void SHACK_HASHTBL_INSERT(CPUState *env, target_ulong guest_eip, unsigned long *host_eip)
 {
     // TODO:
-    list_t *head = &((list_t*)env->shadow_hash_list)[guest_eip % SHACK_HASHTBL_SIZE];
+    unsigned int index = guest_eip % SHACK_HASHTBL_SIZE;
+    list_t *head = &((list_t*)env->shadow_hash_table)[index];
     struct shadow_pair *sp = malloc(sizeof(struct shadow_pair));
     sp->guest_eip = guest_eip;
-    sp->shadow_slot = shadow_slot;
+    sp->host_eip = host_eip;
+    list_init(&sp->l);
     list_add(&sp->l, head);
 }
 
