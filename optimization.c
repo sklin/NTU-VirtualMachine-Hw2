@@ -324,6 +324,8 @@ void SHACK_HASHTBL_REMOVE(struct shadow_pair *sp)
  * Indirect Branch Target Cache
  */
 __thread int update_ibtc;
+struct ibtc_table *ibtc_tbl;
+target_ulong ibtc_cache_guest_eip;
 
 /*
  * helper_lookup_ibtc()
@@ -332,6 +334,22 @@ __thread int update_ibtc;
  */
 void *helper_lookup_ibtc(target_ulong guest_eip)
 {
+    // Cache the guest_eip for the update_ibtc_entry()
+    //fprintf(stderr, "Lookup IBTC.\n");
+    ibtc_cache_guest_eip = guest_eip;
+
+    unsigned index = guest_eip & IBTC_CACHE_MASK;
+    if(ibtc_tbl->htable[index].guest_eip == guest_eip
+            && ibtc_tbl->htable[index].tb != NULL) {
+        // Cache hit
+        // Return the context pointer of the related translation block.
+        //fprintf(stderr, "[IBTC] Cache hit!\n");
+        return ibtc_tbl->htable[index].tb->tc_ptr;
+    }
+    
+    // Cache miss
+    // Enable update_ibtc_entry to update ibtc.
+    update_ibtc = 1;
     return optimization_ret_addr;
 }
 
@@ -341,6 +359,15 @@ void *helper_lookup_ibtc(target_ulong guest_eip)
  */
 void update_ibtc_entry(TranslationBlock *tb)
 {
+    //fprintf(stderr, "update_ibtc_entry\n");
+    // Get the guest_eip from ibtc_cache_guest_eip,
+    //  which was set by helper_lookup_ibtc().
+    unsigned index = ibtc_cache_guest_eip & IBTC_CACHE_MASK;
+    ibtc_tbl->htable[index].guest_eip = ibtc_cache_guest_eip;
+    ibtc_tbl->htable[index].tb = tb;
+
+    // Let QEMU will not call this again.
+    update_ibtc = 0;
 }
 
 /*
@@ -349,6 +376,9 @@ void update_ibtc_entry(TranslationBlock *tb)
  */
 static inline void ibtc_init(CPUState *env)
 {
+    ibtc_tbl = (struct ibtc_table*) malloc(sizeof(struct ibtc_table));
+    memset(ibtc_tbl, 0, sizeof(struct ibtc_table));
+    update_ibtc = 0;
 }
 
 /*
