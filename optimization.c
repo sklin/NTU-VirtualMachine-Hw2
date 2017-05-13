@@ -88,11 +88,9 @@ static inline void shack_init(CPUState *env)
 #endif
     struct shadow_pair *sp = SHACK_HASHTBL_LOOKUP(env, guest_eip);
     if(!sp) {
-        fprintf(stderr, "           Insert sp\n");
         sp = SHACK_HASHTBL_INSERT(env, guest_eip, host_eip);
     }
     else if(!sp->host_eip) {
-        fprintf(stderr, "           Update sp\n");
         sp->host_eip = host_eip;
     }
     /*
@@ -116,7 +114,7 @@ void helper_shack_flush(CPUState *env)
 
 void helper_push_shack(CPUState *env, target_ulong next_eip)
 {
-#ifdef ENABLE_OPTIMIZATION
+#ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, "[SHADOW STACK] Helper Push()\n");
     fprintf(stderr, "               next_eip: 0x%lX\n", next_eip);
     fprintf(stderr, "\n");
@@ -138,7 +136,7 @@ void helper_push_shack(CPUState *env, target_ulong next_eip)
     *((struct shadow_pair **)env->shack_top) = sp;
     env->shack_top += sizeof(struct shadow_pair*);
 
-    dump_shack(env);
+    //dump_shack(env);
 }
 
 void* helper_pop_shack(CPUState *env, target_ulong next_eip)
@@ -150,7 +148,7 @@ void* helper_pop_shack(CPUState *env, target_ulong next_eip)
         if(sp->guest_eip == next_eip && sp->host_eip != NULL) {
             host_eip = sp->host_eip;
         }
-#ifdef ENABLE_OPTIMIZATION
+#ifdef ENABLE_OPTIMIZATION_DEBUG
         fprintf(stderr, "[SHADOW STACK] Helper Pop()\n");
         fprintf(stderr, "               next_eip: 0x%lX\n", next_eip);
         fprintf(stderr, "               top->guest_eip: 0x%X\n", sp->guest_eip);
@@ -159,7 +157,7 @@ void* helper_pop_shack(CPUState *env, target_ulong next_eip)
         //dump_shack_structure(env);
 #endif
     }
-#ifdef ENABLE_OPTIMIZATION
+#ifdef ENABLE_OPTIMIZATION_DEBUG
     else {
         fprintf(stderr, "[SHADOW STACK] Helper Pop()\n");
         fprintf(stderr, "               Stack is empty.\n");
@@ -168,7 +166,7 @@ void* helper_pop_shack(CPUState *env, target_ulong next_eip)
     }
 #endif
 
-    dump_shack(env);
+    //dump_shack(env);
 
     return host_eip;
 }

@@ -8,7 +8,7 @@
 
 /* Comment the next line to disable optimizations. */
 #define ENABLE_OPTIMIZATION
-#define ENABLE_OPTIMIZATION_DEBUG
+//#define ENABLE_OPTIMIZATION_DEBUG
 
 #ifdef ENABLE_OPTIMIZATION_DEBUG
 /*
