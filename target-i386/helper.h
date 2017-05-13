@@ -221,5 +221,6 @@ DEF_HELPER_FLAGS_1(shack_flush, TCG_CALL_CONST, void, env)
 DEF_HELPER_FLAGS_1(lookup_ibtc, TCG_CALL_CONST, ptr, tl)
 
 DEF_HELPER_2(push_shack, void, env, tl)
-DEF_HELPER_2(pop_shack, void, env, tl)
+DEF_HELPER_2(pop_shack, ptr, env, tl)
+DEF_HELPER_0(shack_debug, void)
 #include "def-helper.h"

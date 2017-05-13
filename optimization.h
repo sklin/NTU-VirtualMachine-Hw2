@@ -60,12 +60,12 @@ void list_del(list_t *entry);
 #define MAX_CALL_SLOT   (16 * 1024)
 #define SHACK_SIZE      (16 * 1024)
 
-struct shadow_pair
+typedef struct shadow_pair
 {
     struct list_head l;
     target_ulong guest_eip;
     unsigned long *host_eip;
-};
+} shadow_pair;
 
 void shack_set_shadow(CPUState *env, target_ulong guest_eip, unsigned long *host_eip);
 inline void insert_unresolved_eip(CPUState *env, target_ulong next_eip, unsigned long *slot);
@@ -73,6 +73,10 @@ unsigned long lookup_shadow_ret_addr(CPUState *env, target_ulong pc);
 void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip);
 void pop_shack(TCGv_ptr cpu_env, TCGv next_eip);
 
+void dump_shack_structure(CPUState *env);
+void dump_shack(CPUState *env);
+
+void SHACK_HASHTBL_DUMP(CPUState *env);
 struct shadow_pair* SHACK_HASHTBL_LOOKUP(CPUState *env, target_ulong guest_eip);
 struct shadow_pair* SHACK_HASHTBL_INSERT(CPUState *env, target_ulong guest_eip, unsigned long *host_eip);
 void SHACK_HASHTBL_REMOVE(struct shadow_pair *sp);
