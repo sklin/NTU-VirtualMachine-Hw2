@@ -135,15 +135,7 @@ void helper_push_shack(CPUState *env, target_ulong next_eip)
         sp = SHACK_HASHTBL_INSERT(env, next_eip, NULL);
     }
 
-    fprintf(stderr, "             sp->guest_eip: %p\n", sp->guest_eip);
-    fprintf(stderr, "             sp->host_eip: %p\n", sp->host_eip);
-    fprintf(stderr, "             env->shack_top: %p\n", env->shack_top);
-
-    //struct shadow_pair **top = (struct shadow_pair **) env->shack_top;
-    //*top = sp;
     *((struct shadow_pair **)env->shack_top) = sp;
-    //(*(void*)env->shack_top) = (void*) sp;
-    //*((struct shadow_pair*)env->shack_top) = sp;
     env->shack_top += sizeof(struct shadow_pair*);
 
     dump_shack(env);
@@ -181,7 +173,7 @@ void* helper_pop_shack(CPUState *env, target_ulong next_eip)
     return host_eip;
 }
 
-void helper_shack_debug()
+void helper_shack_debug(CPUState *env)
 {
     fprintf(stderr, "############# Debug ##############\n");
 }
@@ -283,7 +275,7 @@ void SHACK_HASHTBL_DUMP(CPUState *env)
 struct shadow_pair* SHACK_HASHTBL_LOOKUP(CPUState *env, target_ulong guest_eip)
 {
 #ifdef ENABLE_OPTIMIZATION_DEBUG
-    //fprintf(stderr, "[SHADOW STACK] Hash Table Lookup(0x%X)\n", guest_eip);
+    fprintf(stderr, "[SHADOW STACK] Hash Table Lookup(0x%X)\n", guest_eip);
 #endif
     unsigned int index = guest_eip % SHACK_HASHTBL_SIZE;
     list_t *head = &((list_t*)env->shadow_hash_table)[index];
@@ -291,10 +283,10 @@ struct shadow_pair* SHACK_HASHTBL_LOOKUP(CPUState *env, target_ulong guest_eip)
 
     list_t *l = head->next;
     while(l!=head) {
-        l = l->next;
         struct shadow_pair *sp = container_of(l, struct shadow_pair, l);
         if(sp->guest_eip == guest_eip)
             return sp;
+        l = l->next;
     }
     return NULL;
 }
