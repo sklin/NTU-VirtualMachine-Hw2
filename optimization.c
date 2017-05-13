@@ -176,6 +176,16 @@ void helper_shack_debug(CPUState *env)
     fprintf(stderr, "############# Debug ##############\n");
 }
 
+void helper_shack_debug2(target_ulong data)
+{
+    fprintf(stderr, "Debug2: %p\n", data);
+}
+
+void helper_shack_debug_ptr(void *ptr)
+{
+    fprintf(stderr, (char*)ptr);
+}
+
 /*
  * push_shack()
  *  Push next guest eip into shadow stack.
@@ -183,7 +193,45 @@ void helper_shack_debug(CPUState *env)
 void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
 {
 #ifdef ENABLE_OPTIMIZATION
-    gen_helper_push_shack(cpu_env, tcg_const_i32(next_eip));
+    //gen_helper_push_shack(cpu_env, tcg_const_i32(next_eip));
+    
+    // if(env->shack_top == env->shack_end) {
+    TCGv_ptr tcg_shack_top = tcg_temp_new_ptr();
+    TCGv_ptr tcg_shack_end = tcg_temp_new_ptr();
+    tcg_gen_ld_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+    tcg_gen_ld_ptr(tcg_shack_end, cpu_env, offsetof(CPUState, shack_end));
+
+    int label_push = gen_new_label();
+    tcg_gen_brcond_tl(TCG_COND_NE, tcg_shack_top, tcg_shack_end, label_push);
+
+    //   env->shack_top = env->shack;
+    TCGv_ptr tcg_shack = tcg_temp_new_ptr();
+    tcg_gen_ld_ptr(tcg_shack, cpu_env, offsetof(CPUState, shack));
+    tcg_gen_mov_ptr(tcg_shack_top, tcg_shack);
+    tcg_gen_st_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+
+    // }
+    gen_set_label(label_push);
+    
+    struct shadow_pair *sp = SHACK_HASHTBL_LOOKUP(env, next_eip);
+    if(!sp) {
+        sp = SHACK_HASHTBL_INSERT(env, next_eip, NULL);
+    }
+
+    // *((struct shadow_pair **)env->shack_top) = sp;
+    tcg_gen_st_ptr(tcg_const_ptr(sp), tcg_shack_top, 0);
+
+    // env->shack_top += sizeof(struct shadow_pair*);
+    tcg_gen_addi_tl(tcg_shack_top, tcg_shack_top, sizeof(struct shadow_pair*));
+    tcg_gen_st_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+
+    //gen_helper_shack_debug(cpu_env);
+    //gen_helper_shack_debug_str(tcg_const_ptr("push_shack end"));
+
+    // free
+    tcg_temp_free_ptr(tcg_shack_top);
+    tcg_temp_free_ptr(tcg_shack_end);
+    tcg_temp_free_ptr(tcg_shack);
 #endif
 }
 
@@ -194,17 +242,63 @@ void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
 void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
 {
 #ifdef ENABLE_OPTIMIZATION
+    //TCGv_ptr tcg_host_eip = tcg_temp_new_ptr();
+    //gen_helper_pop_shack(tcg_host_eip, cpu_env, next_eip);
+
+    // void *host_eip = NULL;
     TCGv_ptr tcg_host_eip = tcg_temp_new_ptr();
-    gen_helper_pop_shack(tcg_host_eip, cpu_env, next_eip);
+    tcg_gen_mov_ptr(tcg_host_eip, tcg_const_ptr((int32_t)NULL));
+
+    // if(env->shack_top != env->shack) {
+    TCGv_ptr tcg_shack_top = tcg_temp_new_ptr();
+    TCGv_ptr tcg_shack= tcg_temp_new_ptr();
+    tcg_gen_ld_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+    tcg_gen_ld_ptr(tcg_shack, cpu_env, offsetof(CPUState, shack));
+
+    int label_if1_exit = gen_new_label();
+    tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_shack_top, tcg_shack, label_if1_exit);
+
+    //   env->shack_top -= sizeof(struct shadow_pair*);
+    tcg_gen_addi_ptr(tcg_shack_top, tcg_shack_top, -sizeof(struct shadow_pair*));
+    tcg_gen_st_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+
+
+    //   if(sp->guest_eip == next_eip && sp->host_eip != NULL) {
+    TCGv_ptr tcg_sp = tcg_temp_new_ptr();
+    TCGv_ptr tcg_sp_guest_eip = tcg_temp_new_ptr();
+    TCGv_ptr tcg_sp_host_eip = tcg_temp_new_ptr();
+    tcg_gen_ld_ptr(tcg_sp, tcg_shack_top, 0);
+    tcg_gen_ld_ptr(tcg_sp_guest_eip, tcg_sp, offsetof(struct shadow_pair, guest_eip));
+    tcg_gen_ld_ptr(tcg_sp_host_eip, tcg_sp, offsetof(struct shadow_pair, host_eip));
+
+    int label_if2_exit = gen_new_label();
+    tcg_gen_brcond_ptr(TCG_COND_NE, tcg_sp_guest_eip, next_eip, label_if2_exit);
+    tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_sp_host_eip, tcg_const_ptr((int32_t)NULL), label_if2_exit);
+    //     host_eip = sp->host_eip; 
+    tcg_gen_mov_ptr(tcg_host_eip, tcg_sp_host_eip);
+
+    //   }
+    gen_set_label(label_if2_exit);
+
+    // }
+    gen_set_label(label_if1_exit);
 
     int label_exit = gen_new_label();
-    tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_host_eip, tcg_const_ptr(NULL), label_exit);
+    tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_host_eip, tcg_const_ptr((int32_t)NULL), label_exit);
     *gen_opc_ptr++ = INDEX_op_jmp;
     *gen_opparam_ptr++ = tcg_host_eip;
 
     gen_set_label(label_exit);
 
+    //gen_helper_shack_debug(cpu_env);
+    //gen_helper_shack_debug_str(tcg_const_ptr("pop_shack end"));
+
     tcg_temp_free_ptr(tcg_host_eip);
+    tcg_temp_free_ptr(tcg_shack_top);
+    tcg_temp_free_ptr(tcg_shack);
+    tcg_temp_free_ptr(tcg_sp);
+    tcg_temp_free_ptr(tcg_sp_guest_eip);
+    tcg_temp_free_ptr(tcg_sp_host_eip);
 #endif
 }
 

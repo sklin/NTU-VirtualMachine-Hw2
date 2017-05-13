@@ -40,11 +40,13 @@ void list_del(list_t *entry);
  */
 
 #if TCG_TARGET_REG_BITS == 32
+#define tcg_gen_mov_ptr         tcg_gen_mov_i32
 #define tcg_gen_st_ptr          tcg_gen_st_i32
 #define tcg_gen_brcond_ptr      tcg_gen_brcond_i32
 #define tcg_temp_free_ptr       tcg_temp_free_i32
 #define tcg_temp_local_new_ptr  tcg_temp_local_new_i32
 #else
+#define tcg_gen_mov_ptr         tcg_gen_mov_i64
 #define tcg_gen_st_ptr          tcg_gen_st_i64
 #define tcg_gen_brcond_ptr      tcg_gen_brcond_i64
 #define tcg_temp_free_ptr       tcg_temp_free_i64
