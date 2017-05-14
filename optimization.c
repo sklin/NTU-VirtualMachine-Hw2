@@ -50,6 +50,7 @@ list_t *shadow_hash_list;
 static inline void shack_init(CPUState *env)
 {
 #ifdef ENABLE_OPTIMIZATION
+#ifdef ENABLE_OPTIMIZATION_SHACK
 
     /* allocate shadow stack */
     // store guest return address
@@ -69,8 +70,9 @@ static inline void shack_init(CPUState *env)
     fprintf(stderr, "\n");
     //dump_shack_structure(env);
     dump_shack(env);
-#endif
-#endif
+#endif // ENABLE_OPTIMIZATION_DEBUG
+#endif // ENABLE_OPTIMIZATION_SHACK
+#endif // ENABLE_OPTIMIZATION
 }
 
 /*
@@ -80,12 +82,13 @@ static inline void shack_init(CPUState *env)
  void shack_set_shadow(CPUState *env, target_ulong guest_eip, unsigned long *host_eip)
 {
 #ifdef ENABLE_OPTIMIZATION
+#ifdef ENABLE_OPTIMIZATION_SHACK
 #ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, "[SHADOW STACK] shack_set_shadow\n");
     fprintf(stderr, "               quest_eip: 0x%X\n", guest_eip);
     fprintf(stderr, "               host_eip: %p\n", host_eip);
     fprintf(stderr, "\n");
-#endif
+#endif // ENABLE_OPTIMIZATION_DEBUG
     struct shadow_pair *sp = SHACK_HASHTBL_LOOKUP(env, guest_eip);
     if(!sp) {
         sp = SHACK_HASHTBL_INSERT(env, guest_eip, host_eip);
@@ -93,7 +96,8 @@ static inline void shack_init(CPUState *env)
     else if(!sp->host_eip) {
         sp->host_eip = host_eip;
     }
-#endif
+#endif // ENABLE_OPTIMIZATION_SHACK
+#endif // ENABLE_OPTIMIZATION
 }
 
 /*
@@ -103,18 +107,21 @@ static inline void shack_init(CPUState *env)
 void helper_shack_flush(CPUState *env)
 {
 #ifdef ENABLE_OPTIMIZATION
+#ifdef ENABLE_OPTIMIZATION_SHACK
     env->shack_top = env->shack;
-#endif
+#endif // ENABLE_OPTIMIZATION_SHACK
+#endif // ENABLE_OPTIMIZATION
 }
 
 void helper_push_shack(CPUState *env, target_ulong next_eip)
 {
+#ifdef ENABLE_OPTIMIZATION_SHACK
 #ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, "[SHADOW STACK] Helper Push()\n");
     fprintf(stderr, "               next_eip: 0x%X\n", next_eip);
     fprintf(stderr, "\n");
     //dump_shack_structure(env);
-#endif
+#endif // ENABLE_OPTIMIZATION_DEBUG
 
     // Check whether the stack is full
     if(env->shack_top == env->shack_end) {
@@ -132,11 +139,13 @@ void helper_push_shack(CPUState *env, target_ulong next_eip)
     env->shack_top += sizeof(struct shadow_pair*);
 
     //dump_shack(env);
+#endif // ENABLE_OPTIMIZATION_SHACK
 }
 
 void* helper_pop_shack(CPUState *env, target_ulong next_eip)
 {
     void *host_eip = NULL;
+#ifdef ENABLE_OPTIMIZATION_SHACK
     if(env->shack_top != env->shack) {
         env->shack_top -= sizeof(struct shadow_pair*);
         struct shadow_pair *sp = *((struct shadow_pair**) env->shack_top);
@@ -163,18 +172,23 @@ void* helper_pop_shack(CPUState *env, target_ulong next_eip)
 
     //dump_shack(env);
 
+#endif // ENABLE_OPTIMIZATION_SHACK
     return host_eip;
 }
 
 void helper_shack_debug(CPUState *env)
 {
+#ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, "############# Debug ##############\n");
     dump_shack(env);
+#endif // ENABLE_OPTIMIZATION_DEBUG
 }
 
 void helper_shack_debug2(target_ulong data)
 {
+#ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, "Debug2: 0x%X\n", data);
+#endif // ENABLE_OPTIMIZATION_DEBUG
 }
 
 /*
@@ -184,6 +198,7 @@ void helper_shack_debug2(target_ulong data)
 void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
 {
 #ifdef ENABLE_OPTIMIZATION
+#ifdef ENABLE_OPTIMIZATION_SHACK
     //gen_helper_push_shack(cpu_env, tcg_const_tl(next_eip));
     struct shadow_pair *sp = SHACK_HASHTBL_LOOKUP(env, next_eip);
     if(!sp) {
@@ -219,7 +234,8 @@ void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
     tcg_temp_free_ptr(tcg_shack_top);
     tcg_temp_free_ptr(tcg_shack_end);
     tcg_temp_free_ptr(tcg_shack);
-#endif
+#endif // ENABLE_OPTIMIZATION_SHACK
+#endif // ENABLE_OPTIMIZATION
 }
 
 /*
@@ -229,6 +245,7 @@ void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
 void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
 {
 #ifdef ENABLE_OPTIMIZATION
+#ifdef ENABLE_OPTIMIZATION_SHACK
     //TCGv_ptr tcg_host_eip = tcg_temp_new_ptr();
     //gen_helper_pop_shack(tcg_host_eip, cpu_env, next_eip);
 
@@ -268,7 +285,9 @@ void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
     tcg_temp_free_ptr(tcg_sp);
     tcg_temp_free_ptr(tcg_sp_guest_eip);
     tcg_temp_free_ptr(tcg_sp_host_eip);
-#endif
+    tcg_temp_free_ptr(tcg_next_eip);
+#endif // ENABLE_OPTIMIZATION_SHACK
+#endif // ENABLE_OPTIMIZATION
 }
 
 /*
@@ -277,6 +296,7 @@ void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
  */
 void dump_shack_structure(CPUState *env)
 {
+#ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
     fprintf(stderr, "> Dump shack_structure\n");
     fprintf(stderr, ">     env->shack: %p\n", env->shack);
@@ -286,6 +306,7 @@ void dump_shack_structure(CPUState *env)
     fprintf(stderr, ">   Now the stack has %d entries.\n",
             (env->shack_top-env->shack)/sizeof(struct shadow_pair*));
     fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+#endif // ENABLE_OPTIMIZATION_DEBUG
 }
 
 /*
@@ -294,6 +315,7 @@ void dump_shack_structure(CPUState *env)
  */
 void dump_shack(CPUState *env)
 {
+#ifdef ENABLE_OPTIMIZATION_DEBUG
     dump_shack_structure(env);
     fprintf(stderr, "+-----------------------------\n");
     fprintf(stderr, "| Shadow Stack Dump\n");
@@ -306,6 +328,7 @@ void dump_shack(CPUState *env)
                 iter, sp, sp->guest_eip, sp->host_eip);
     }
     fprintf(stderr, "+-----------------------------\n");
+#endif // ENABLE_OPTIMIZATION_DEBUG
 }
 
 
@@ -315,6 +338,7 @@ void dump_shack(CPUState *env)
  */
 void SHACK_HASHTBL_DUMP(CPUState *env)
 {
+#ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, "##############################\n");
     fprintf(stderr, "# Hash Table Dump\n");
     int index;
@@ -332,6 +356,7 @@ void SHACK_HASHTBL_DUMP(CPUState *env)
         }
     }
     fprintf(stderr, "##############################\n");
+#endif // ENABLE_OPTIMIZATION_DEBUG
 }
 
 /*
@@ -401,6 +426,7 @@ target_ulong ibtc_cache_guest_eip;
  */
 void *helper_lookup_ibtc(target_ulong guest_eip)
 {
+#ifdef ENABLE_OPTIMIZATION_IBTC
     // Cache the guest_eip for the update_ibtc_entry()
     //fprintf(stderr, "Lookup IBTC.\n");
     ibtc_cache_guest_eip = guest_eip;
@@ -417,6 +443,7 @@ void *helper_lookup_ibtc(target_ulong guest_eip)
     // Cache miss
     // Enable update_ibtc_entry to update ibtc.
     update_ibtc = 1;
+#endif ENABLE_OPTIMIZATION_IBTC
     return optimization_ret_addr;
 }
 
@@ -426,6 +453,7 @@ void *helper_lookup_ibtc(target_ulong guest_eip)
  */
 void update_ibtc_entry(TranslationBlock *tb)
 {
+#ifdef ENABLE_OPTIMIZATION_IBTC
     //fprintf(stderr, "update_ibtc_entry\n");
     // Get the guest_eip from ibtc_cache_guest_eip,
     //  which was set by helper_lookup_ibtc().
@@ -435,6 +463,7 @@ void update_ibtc_entry(TranslationBlock *tb)
 
     // Let QEMU will not call this again.
     update_ibtc = 0;
+#endif ENABLE_OPTIMIZATION_IBTC
 }
 
 /*
@@ -443,8 +472,10 @@ void update_ibtc_entry(TranslationBlock *tb)
  */
 static inline void ibtc_init(CPUState *env)
 {
+#ifdef ENABLE_OPTIMIZATION_IBTC
     ibtc_tbl = (struct ibtc_table*) malloc(sizeof(struct ibtc_table));
     memset(ibtc_tbl, 0, sizeof(struct ibtc_table));
+#endif ENABLE_OPTIMIZATION_IBTC
     update_ibtc = 0;
 }
 

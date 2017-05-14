@@ -15,6 +15,8 @@
     fprintf(stderr, "[SHADOW STACK] \n");
 */
 #endif
+#define ENABLE_OPTIMIZATION_SHACK
+#define ENABLE_OPTIMIZATION_IBTC
 
 /*
  * Link list facilities
