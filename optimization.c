@@ -271,11 +271,11 @@ void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
      */
 
     //gen_helper_shack_debug(cpu_env);
-    TCGv_ptr tcg_shack_top = tcg_temp_new_ptr();
-    TCGv_ptr tcg_shack = tcg_temp_new_ptr();
-    TCGv_ptr tcg_sp = tcg_temp_new_ptr();
-    TCGv_ptr tcg_sp_guest_eip = tcg_temp_new_ptr();
-    TCGv_ptr tcg_sp_host_eip = tcg_temp_new_ptr();
+    TCGv_ptr tcg_shack_top = tcg_temp_local_new_ptr();
+    TCGv_ptr tcg_shack = tcg_temp_local_new_ptr();
+    TCGv_ptr tcg_sp = tcg_temp_local_new_ptr();
+    TCGv_ptr tcg_sp_guest_eip = tcg_temp_local_new_ptr();
+    TCGv_ptr tcg_sp_host_eip = tcg_temp_local_new_ptr();
 
     int label_exit = gen_new_label();
 
@@ -283,24 +283,18 @@ void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
     tcg_gen_ld_ptr(tcg_shack, cpu_env, offsetof(CPUState, shack));
     tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_shack_top, tcg_shack, label_exit);
 
-    tcg_gen_ld_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
     tcg_gen_addi_ptr(tcg_shack_top, tcg_shack_top, -sizeof(struct shadow_pair*));
     tcg_gen_st_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
     tcg_gen_ld_ptr(tcg_sp, tcg_shack_top, 0);
     tcg_gen_ld_ptr(tcg_sp_guest_eip, tcg_sp, offsetof(struct shadow_pair, guest_eip));
-    gen_helper_shack_debug2(tcg_shack_top); // TODO: WTF, without this line, it will segmentation fault.
+    //gen_helper_shack_debug2(tcg_shack_top); // TODO: WTF, without this line, it will segmentation fault.
+    //tcg_gen_brcond_ptr(TCG_COND_NE, tcg_sp_guest_eip, tcg_next_eip, label_exit);
     tcg_gen_brcond_ptr(TCG_COND_NE, tcg_sp_guest_eip, next_eip, label_exit);
 
-    tcg_gen_ld_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
-    tcg_gen_ld_ptr(tcg_sp, tcg_shack_top, 0);
+    //gen_helper_shack_debug(cpu_env);
     tcg_gen_ld_ptr(tcg_sp_host_eip, tcg_sp, offsetof(struct shadow_pair, guest_eip));
     tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_sp_host_eip, tcg_const_ptr(NULL), label_exit);
 
-    gen_helper_shack_debug(cpu_env);
-    tcg_gen_ld_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
-    tcg_gen_ld_ptr(tcg_sp, tcg_shack_top, 0);
-    tcg_gen_ld_ptr(tcg_sp_host_eip, tcg_sp, offsetof(struct shadow_pair, guest_eip));
-    gen_helper_shack_debug(cpu_env);
     *gen_opc_ptr++ = INDEX_op_jmp;
     *gen_opparam_ptr++ = tcg_sp_host_eip;
 
