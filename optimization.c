@@ -174,6 +174,17 @@ void* helper_pop_shack(CPUState *env, target_ulong next_eip)
 void helper_shack_debug(CPUState *env)
 {
     fprintf(stderr, "############# Debug ##############\n");
+    dump_shack(env);
+}
+
+void helper_shack_debug2(target_ulong data)
+{
+    fprintf(stderr, "Debug2: 0x%X\n", data);
+}
+
+void helper_shack_debug_ptr(void *ptr)
+{
+    fprintf(stderr, (char*)ptr);
 }
 
 /*
@@ -183,7 +194,42 @@ void helper_shack_debug(CPUState *env)
 void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
 {
 #ifdef ENABLE_OPTIMIZATION
-    gen_helper_push_shack(cpu_env, tcg_const_i32(next_eip));
+    //gen_helper_push_shack(cpu_env, tcg_const_tl(next_eip));
+    struct shadow_pair *sp = SHACK_HASHTBL_LOOKUP(env, next_eip);
+    if(!sp) {
+        sp = SHACK_HASHTBL_INSERT(env, next_eip, NULL);
+    }
+    static int counter = 0;
+    
+    // if(env->shack_top == env->shack_end) {
+    TCGv_ptr tcg_shack_top = tcg_temp_new_ptr();
+    TCGv_ptr tcg_shack_end = tcg_temp_new_ptr();
+    tcg_gen_ld_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+    tcg_gen_ld_ptr(tcg_shack_end, cpu_env, offsetof(CPUState, shack_end));
+
+    int label_push = gen_new_label();
+    tcg_gen_brcond_tl(TCG_COND_NE, tcg_shack_top, tcg_shack_end, label_push);
+
+    //   env->shack_top = env->shack;
+    TCGv_ptr tcg_shack = tcg_temp_new_ptr();
+    tcg_gen_ld_ptr(tcg_shack, cpu_env, offsetof(CPUState, shack));
+    tcg_gen_st_ptr(tcg_shack, cpu_env, offsetof(CPUState, shack_top));
+
+    // }
+    gen_set_label(label_push);
+
+    // *((struct shadow_pair **)env->shack_top) = sp;
+    tcg_gen_ld_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+    tcg_gen_st_ptr(tcg_const_ptr(sp), tcg_shack_top, 0);
+
+    // env->shack_top += sizeof(struct shadow_pair*);
+    tcg_gen_addi_ptr(tcg_shack_top, tcg_shack_top, sizeof(struct shadow_pair*));
+    tcg_gen_st_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+
+    // free
+    tcg_temp_free_ptr(tcg_shack_top);
+    tcg_temp_free_ptr(tcg_shack_end);
+    tcg_temp_free_ptr(tcg_shack);
 #endif
 }
 
@@ -194,17 +240,45 @@ void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
 void pop_shack(TCGv_ptr cpu_env, TCGv next_eip)
 {
 #ifdef ENABLE_OPTIMIZATION
-    TCGv_ptr tcg_host_eip = tcg_temp_new_ptr();
-    gen_helper_pop_shack(tcg_host_eip, cpu_env, next_eip);
+    //TCGv_ptr tcg_host_eip = tcg_temp_new_ptr();
+    //gen_helper_pop_shack(tcg_host_eip, cpu_env, next_eip);
+
+    TCGv_ptr tcg_shack_top = tcg_temp_local_new_ptr();
+    TCGv_ptr tcg_shack = tcg_temp_local_new_ptr();
+    TCGv_ptr tcg_sp = tcg_temp_local_new_ptr();
+    TCGv_ptr tcg_sp_guest_eip = tcg_temp_local_new_ptr();
+    TCGv_ptr tcg_sp_host_eip = tcg_temp_local_new_ptr();
+
+    TCGv tcg_next_eip = tcg_temp_local_new();
+    tcg_gen_mov_tl(tcg_next_eip, next_eip);
 
     int label_exit = gen_new_label();
-    tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_host_eip, tcg_const_ptr(NULL), label_exit);
+
+    tcg_gen_ld_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+    tcg_gen_ld_ptr(tcg_shack, cpu_env, offsetof(CPUState, shack));
+    tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_shack_top, tcg_shack, label_exit);
+
+    tcg_gen_addi_ptr(tcg_shack_top, tcg_shack_top, -sizeof(struct shadow_pair*));
+    tcg_gen_st_ptr(tcg_shack_top, cpu_env, offsetof(CPUState, shack_top));
+    tcg_gen_ld_ptr(tcg_sp, tcg_shack_top, 0);
+    tcg_gen_ld_ptr(tcg_sp_guest_eip, tcg_sp, offsetof(struct shadow_pair, guest_eip));
+    tcg_gen_brcond_ptr(TCG_COND_NE, tcg_sp_guest_eip, tcg_next_eip, label_exit);
+
+    tcg_gen_ld_ptr(tcg_sp_host_eip, tcg_sp, offsetof(struct shadow_pair, host_eip));
+    tcg_gen_brcond_ptr(TCG_COND_EQ, tcg_sp_host_eip, tcg_const_ptr(NULL), label_exit);
+
     *gen_opc_ptr++ = INDEX_op_jmp;
-    *gen_opparam_ptr++ = tcg_host_eip;
+    *gen_opparam_ptr++ = tcg_sp_host_eip;
+
 
     gen_set_label(label_exit);
 
-    tcg_temp_free_ptr(tcg_host_eip);
+    // free
+    tcg_temp_free_ptr(tcg_shack_top);
+    tcg_temp_free_ptr(tcg_shack);
+    tcg_temp_free_ptr(tcg_sp);
+    tcg_temp_free_ptr(tcg_sp_guest_eip);
+    tcg_temp_free_ptr(tcg_sp_host_eip);
 #endif
 }
 
@@ -220,6 +294,8 @@ void dump_shack_structure(CPUState *env)
     fprintf(stderr, ">     env->shack_top: %p\n", env->shack_top);
     fprintf(stderr, ">     env->shack_end: %p\n", env->shack_end);
     fprintf(stderr, ">     env->shadow_hash_table: %p\n", env->shadow_hash_table);
+    fprintf(stderr, ">   Now the stack has %d entries.\n",
+            (env->shack_top-env->shack)/sizeof(struct shadow_pair*));
     fprintf(stderr, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 }
 
@@ -229,13 +305,16 @@ void dump_shack_structure(CPUState *env)
  */
 void dump_shack(CPUState *env)
 {
+    dump_shack_structure(env);
     fprintf(stderr, "+-----------------------------\n");
     fprintf(stderr, "| Shadow Stack Dump\n");
     struct shadow_pair **iter = env->shack_top;
+    fprintf(stderr, "|         stack )             sp: (guest_eip, host_eip)\n");
     while(iter!= env->shack) {
         --iter;
         struct shadow_pair *sp = *iter;
-        fprintf(stderr, "|     %p: (%p, %p)\n", sp, sp->guest_eip, sp->host_eip);
+        fprintf(stderr, "|     %p)     %p: (%p, %p)\n",
+                iter, sp, sp->guest_eip, sp->host_eip);
     }
     fprintf(stderr, "+-----------------------------\n");
 }
