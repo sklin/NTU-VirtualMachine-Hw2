@@ -83,7 +83,7 @@ static inline void shack_init(CPUState *env)
 #ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, "[SHADOW STACK] shack_set_shadow\n");
     fprintf(stderr, "               quest_eip: 0x%X\n", guest_eip);
-    fprintf(stderr, "               host_eip: 0x%X\n", host_eip);
+    fprintf(stderr, "               host_eip: %p\n", host_eip);
     fprintf(stderr, "\n");
 #endif
     struct shadow_pair *sp = SHACK_HASHTBL_LOOKUP(env, guest_eip);
@@ -93,11 +93,6 @@ static inline void shack_init(CPUState *env)
     else if(!sp->host_eip) {
         sp->host_eip = host_eip;
     }
-    /*
-    if(sp) {
-        sp->host_eip = host_eip; // TODO:
-    }
-    */
 #endif
 }
 
@@ -116,7 +111,7 @@ void helper_push_shack(CPUState *env, target_ulong next_eip)
 {
 #ifdef ENABLE_OPTIMIZATION_DEBUG
     fprintf(stderr, "[SHADOW STACK] Helper Push()\n");
-    fprintf(stderr, "               next_eip: 0x%lX\n", next_eip);
+    fprintf(stderr, "               next_eip: 0x%X\n", next_eip);
     fprintf(stderr, "\n");
     //dump_shack_structure(env);
 #endif
@@ -150,9 +145,9 @@ void* helper_pop_shack(CPUState *env, target_ulong next_eip)
         }
 #ifdef ENABLE_OPTIMIZATION_DEBUG
         fprintf(stderr, "[SHADOW STACK] Helper Pop()\n");
-        fprintf(stderr, "               next_eip: 0x%lX\n", next_eip);
+        fprintf(stderr, "               next_eip: 0x%X\n", next_eip);
         fprintf(stderr, "               top->guest_eip: 0x%X\n", sp->guest_eip);
-        fprintf(stderr, "               top->host_eip: 0x%X\n", sp->host_eip);
+        fprintf(stderr, "               top->host_eip: %p\n", sp->host_eip);
         fprintf(stderr, "\n");
         //dump_shack_structure(env);
 #endif
@@ -182,11 +177,6 @@ void helper_shack_debug2(target_ulong data)
     fprintf(stderr, "Debug2: 0x%X\n", data);
 }
 
-void helper_shack_debug_ptr(void *ptr)
-{
-    fprintf(stderr, (char*)ptr);
-}
-
 /*
  * push_shack()
  *  Push next guest eip into shadow stack.
@@ -199,7 +189,6 @@ void push_shack(CPUState *env, TCGv_ptr cpu_env, target_ulong next_eip)
     if(!sp) {
         sp = SHACK_HASHTBL_INSERT(env, next_eip, NULL);
     }
-    static int counter = 0;
     
     // if(env->shack_top == env->shack_end) {
     TCGv_ptr tcg_shack_top = tcg_temp_new_ptr();
@@ -313,7 +302,7 @@ void dump_shack(CPUState *env)
     while(iter!= env->shack) {
         --iter;
         struct shadow_pair *sp = *iter;
-        fprintf(stderr, "|     %p)     %p: (%p, %p)\n",
+        fprintf(stderr, "|     %p)     %p: (0x%X, %p)\n",
                 iter, sp, sp->guest_eip, sp->host_eip);
     }
     fprintf(stderr, "+-----------------------------\n");
@@ -338,7 +327,7 @@ void SHACK_HASHTBL_DUMP(CPUState *env)
         list_t *l = head->next;
         while(l!=head) {
             struct shadow_pair *sp = container_of(l, struct shadow_pair, l);
-            fprintf(stderr, "#     (%p, %p)\n", sp->guest_eip, sp->host_eip);
+            fprintf(stderr, "#     (0x%X, %p)\n", sp->guest_eip, sp->host_eip);
             l = l->next;
         }
     }
@@ -373,7 +362,6 @@ struct shadow_pair* SHACK_HASHTBL_LOOKUP(CPUState *env, target_ulong guest_eip)
  */
 struct shadow_pair* SHACK_HASHTBL_INSERT(CPUState *env, target_ulong guest_eip, unsigned long *host_eip)
 {
-    // TODO:
     unsigned int index = guest_eip % SHACK_HASHTBL_SIZE;
     list_t *head = &((list_t*)env->shadow_hash_table)[index];
     struct shadow_pair *sp = malloc(sizeof(struct shadow_pair));
